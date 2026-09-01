@@ -43,7 +43,7 @@ func main() {
 					},
 				},
 			},
-			Tools: []openai.ChatCompletionNewParamsToolUnion{
+			Tools: []openai.ChatCompletionToolUnionParam{
                 {
                     OfFunction: &openai.ChatCompletionFunctionToolParam{
                         Function: openai.FunctionDefinitionParam{
