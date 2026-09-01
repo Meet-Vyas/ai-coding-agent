@@ -43,7 +43,7 @@ func main() {
 					},
 				},
 			},
-			Tools: []openai.ChatCompletionToolUnion{
+			Tools: []openai.ChatCompletionNewParamsToolUnion{
                 {
                     OfFunction: &openai.ChatCompletionFunctionToolParam{
                         Function: openai.FunctionDefinitionParam{
@@ -53,7 +53,7 @@ func main() {
                                 "type": "object",
                                 "properties": map[string]any{
                                     "file_path": map[string]any{
-                                        "type":        "string",
+                                        "type": "string",
                                         "description": "The path to the file to read",
                                     },
                                 },
