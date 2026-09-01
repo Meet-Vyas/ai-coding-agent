@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -25,7 +26,6 @@ func main() {
 		baseUrl = "https://openrouter.ai/api/v1"
 	}
 
-	print(apiKey)
 	if apiKey == "" {
 		panic("Env variable OPENROUTER_API_KEY not found")
 	}
@@ -77,5 +77,44 @@ func main() {
 	fmt.Fprintln(os.Stderr, "Logs from your program will appear here!")
 
 	// TODO: Uncomment the line below to pass the first stage
-	fmt.Print(resp.Choices[0].Message.Content)
+	// fmt.Print(resp.Choices[0].Message.Content)
+
+	message := resp.Choices[0].Message
+
+	if len(message.ToolCalls) == 0 {
+		fmt.Print(message.Content)
+		return
+	}
+
+	// This stage requires executing only the first tool call.
+	toolCall := message.ToolCalls[0]
+
+	if toolCall.Function.Name != "Read" {
+		// what does this line even mean?
+		fmt.Fprintf(os.Stderr, "unsupported tool: %s\n", toolCall.Function.Name)
+		os.Exit(1)
+	}
+
+	var args struct {
+		FilePath string `json:"file_path"`
+	}
+
+	if err := json.Unmarshal(
+		[]byte(toolCall.Function.Arguments),
+		&args,
+	); err != nil {
+		fmt.Fprintf(os.Stderr, "invalid Read arguments: %v\n", err)
+		os.Exit(1)
+	}
+
+	// here we are able to get the filePath properly, now we can read it and send the contents to our LLM to summarize it
+
+	contents, err := os.ReadFile(args.FilePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to read %s: %v\n", args.FilePath, err)
+		os.Exit(1)
+	}
+
+	// diff in print, Print, Fprintf?
+	fmt.Print(string(contents))
 }
