@@ -125,9 +125,6 @@ func main() {
 			panic("No choices in response")
 		}
 
-		// You can use print statements as follows for debugging, they'll be visible when running tests.
-		fmt.Fprintln(os.Stderr, "Logs from your program will appear here!")
-
 		message := resp.Choices[0].Message
 
 		params.Messages = append(

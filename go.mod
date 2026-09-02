@@ -1,4 +1,4 @@
-module github.com/codecrafters-io/claude-code-starter-go
+module github.com/Meet-Vyas/ai-coding-agent
 
 go 1.26.0
 
