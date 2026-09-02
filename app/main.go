@@ -46,24 +46,24 @@ func main() {
 			},
 		},
 		Tools: []openai.ChatCompletionToolUnionParam{
-            {
-                OfFunction: &openai.ChatCompletionFunctionToolParam{
-                    Function: openai.FunctionDefinitionParam{
-                        Name: "Read",
-                        Description: openai.String("Read and return the contents of a file"),
-                        Parameters: openai.FunctionParameters{
-                            "type": "object",
-                            "properties": map[string]any{
-                                "file_path": map[string]any{
-                                    "type": "string",
-                                    "description": "The path to the file to read",
-                                },
-                            },
-                            "required": []string{"file_path"},
-                        },
-                    },
-                },
-            },
+			{
+				OfFunction: &openai.ChatCompletionFunctionToolParam{
+					Function: openai.FunctionDefinitionParam{
+						Name: "Read",
+						Description: openai.String("Read and return the contents of a file"),
+						Parameters: openai.FunctionParameters{
+							"type": "object",
+							"properties": map[string]any{
+								"file_path": map[string]any{
+									"type": "string",
+									"description": "The path to the file to read",
+								},
+							},
+							"required": []string{"file_path"},
+						},
+					},
+				},
+			},
 			{
 				OfFunction: &openai.ChatCompletionFunctionToolParam{
 					Function: openai.FunctionDefinitionParam{
@@ -89,7 +89,7 @@ func main() {
 					},
 				},
 			},
-        },
+		},
 	}
 
 	for {
@@ -122,7 +122,7 @@ func main() {
 		// The model can request multiple tools in one response,
 		// so execute every tool call rather than only the first one.
 		for _, toolCall := range message.ToolCalls {
-			// Read is currently the only tool provided to the model.
+			// Select the implementation for the tool requested by the model.
 			switch toolCall.Function.Name {
 			case "Read":
 
@@ -209,15 +209,14 @@ func main() {
 				)
 
 			default:
-			// Reject tool names that this program does not implement.
-			fmt.Fprintf(
-				os.Stderr,
-				"unsupported tool: %s\n",
-				toolCall.Function.Name,
-			)
-			os.Exit(1)
+				// Reject tool names that this program does not implement.
+				fmt.Fprintf(
+					os.Stderr,
+					"unsupported tool: %s\n",
+					toolCall.Function.Name,
+				)
+				os.Exit(1)
+			}
 		}
-
 	}
-
 }
