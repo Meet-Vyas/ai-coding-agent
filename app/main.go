@@ -64,6 +64,31 @@ func main() {
                     },
                 },
             },
+			{
+				OfFunction: &openai.ChatCompletionFunctionToolParam{
+					Function: openai.FunctionDefinitionParam{
+						Name: "Write",
+						Description: openai.String("Write content to a file"),
+						Parameters: openai.FunctionParameters{
+							"type": "object",
+							"properties": map[string]any{
+								"file_path": map[string]any{
+									"type": "string",
+									"description": "The path of the file to write to",
+								},
+								"content": map[string]any{
+									"type": "string",
+									"description": "The content to write to the file",
+								},
+							},
+
+							// Both values are required because Write cannot execute
+							// without knowing the destination and its new contents.
+							"required": []string{"file_path", "content"},
+						},
+					},
+				},
+			},
         },
 	}
 
@@ -98,57 +123,99 @@ func main() {
 		// so execute every tool call rather than only the first one.
 		for _, toolCall := range message.ToolCalls {
 			// Read is currently the only tool provided to the model.
-			if toolCall.Function.Name != "Read" {
-				fmt.Fprintf(
-					os.Stderr,
-					"unsupported tool: %s\n",
-					toolCall.Function.Name,
+			switch toolCall.Function.Name {
+			case "Read":
+
+				// Define the expected JSON arguments for the Read tool.
+				var args struct {
+					FilePath string `json:"file_path"`
+				}
+
+				// Convert the model-generated JSON arguments into the Go struct.
+				if err := json.Unmarshal(
+					[]byte(toolCall.Function.Arguments),
+					&args,
+				); err != nil {
+					fmt.Fprintf(
+						os.Stderr,
+						"invalid Read arguments: %v\n",
+						err,
+					)
+					os.Exit(1)
+				}
+
+				// Execute the Read tool by reading the requested file.
+				contents, err := os.ReadFile(args.FilePath)
+				if err != nil {
+					fmt.Fprintf(
+						os.Stderr,
+						"failed to read %s: %v\n",
+						args.FilePath,
+						err,
+					)
+					os.Exit(1)
+				}
+
+				// Do not print the file contents.
+				// Instead, add them to the conversation as a tool result.
+				//
+				// toolCall.ID links this result to the corresponding tool call
+				// in the preceding assistant message.
+				params.Messages = append(
+					params.Messages,
+					openai.ToolMessage(
+						string(contents),
+						toolCall.ID,
+					),
 				)
-				os.Exit(1)
-			}
 
-			// Define the expected JSON arguments for the Read tool.
-			var args struct {
-				FilePath string `json:"file_path"`
-			}
+			case "Write":
+				var args struct {
+					FilePath string `json:"file_path"`
+					Content string `json:"content"`
+				}
 
-			// Convert the model-generated JSON arguments into the Go struct.
-			if err := json.Unmarshal(
-				[]byte(toolCall.Function.Arguments),
-				&args,
-			); err != nil {
-				fmt.Fprintf(
-					os.Stderr,
-					"invalid Read arguments: %v\n",
-					err,
-				)
-				os.Exit(1)
-			}
+				if err := json.Unmarshal(
+					[]byte(toolCall.Function.Arguments),
+					&args,
+				); err != nil {
+					fmt.Fprintf(os.Stderr, "invalid Write arguments: %v\n", err)
+					os.Exit(1)
+				}
 
-			// Execute the Read tool by reading the requested file.
-			contents, err := os.ReadFile(args.FilePath)
-			if err != nil {
-				fmt.Fprintf(
-					os.Stderr,
-					"failed to read %s: %v\n",
+				// WriteFile creates the file if it does not exist and truncates
+				// (overwrites) it if it already exists. 0644 gives the owner
+				// read/write permission and other users read permission.
+				if err := os.WriteFile(
 					args.FilePath,
-					err,
-				)
-				os.Exit(1)
-			}
+					[]byte(args.Content),
+					0644,
+				); err != nil {
+					fmt.Fprintf(
+						os.Stderr,
+						"failed to write %s: %v\n",
+						args.FilePath,
+						err,
+					)
+					os.Exit(1)
+				}
 
-			// Do not print the file contents.
-			// Instead, add them to the conversation as a tool result.
-			//
-			// toolCall.ID links this result to the corresponding tool call
-			// in the preceding assistant message.
-			params.Messages = append(
-				params.Messages,
-				openai.ToolMessage(
-					string(contents),
-					toolCall.ID,
-				),
+				// Tell the model that the operation completed. This must be a
+				// tool message so the model can continue and produce its final
+				// response, such as "Created the file".
+				params.Messages = append(
+					params.Messages,
+					openai.ToolMessage("File written successfully", toolCall.ID),
+				)
+
+			default:
+			// Reject tool names that this program does not implement.
+			fmt.Fprintf(
+				os.Stderr,
+				"unsupported tool: %s\n",
+				toolCall.Function.Name,
 			)
+			os.Exit(1)
 		}
 
 	}
