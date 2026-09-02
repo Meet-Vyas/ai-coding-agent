@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
@@ -85,6 +86,27 @@ func main() {
 							// Both values are required because Write cannot execute
 							// without knowing the destination and its new contents.
 							"required": []string{"file_path", "content"},
+						},
+					},
+				},
+			},
+			{
+				OfFunction: &openai.ChatCompletionFunctionToolParam{
+					Function: openai.FunctionDefinitionParam{
+						Name: "Bash",
+						Description: openai.String("Execute a shell command"),
+						Parameters: openai.FunctionParameters{
+							"type": "object",
+							"properties": map[string]any{
+								"command": map[string]any{
+									"type": "string",
+									"description": "The shell command to execute",
+								},
+							},
+
+							// Bash cannot run without knowing which command the
+							// model wants to execute.
+							"required": []string{"command"},
 						},
 					},
 				},
@@ -206,6 +228,57 @@ func main() {
 				params.Messages = append(
 					params.Messages,
 					openai.ToolMessage("File written successfully", toolCall.ID),
+				)
+
+			case "Bash":
+				// This struct describes the JSON arguments expected from the model:
+				// {"command":"rm README_old.md"}
+				var args struct {
+					Command string `json:"command"`
+				}
+
+				// Convert the model-generated JSON into the Go struct.
+				if err := json.Unmarshal(
+					[]byte(toolCall.Function.Arguments),
+					&args,
+				); err != nil {
+					fmt.Fprintf(os.Stderr, "invalid Bash arguments: %v\n", err)
+					os.Exit(1)
+				}
+
+				// Run the command through the system shell.
+				//
+				// Using "sh -c" allows shell features such as pipes, redirection,
+				// and multiple command arguments. The command inherits this
+				// program's current working directory, so it operates on the
+				// tester's project files rather than a temporary directory.
+				cmd := exec.Command("sh", "-c", args.Command)
+
+				// CombinedOutput captures both stdout and stderr. Shell commands
+				// often report useful failure details through stderr.
+				output, commandErr := cmd.CombinedOutput()
+				toolOutput := string(output)
+
+				if commandErr != nil {
+					// A failed shell command is reported to the model as a tool
+					// result. Do not immediately terminate the agent: the model
+					// may be able to understand the error or try another command.
+					if toolOutput != "" {
+						toolOutput += "\n"
+					}
+					toolOutput += fmt.Sprintf("Command failed: %v", commandErr)
+				} else if toolOutput == "" {
+					// Commands such as `rm README_old.md` normally produce no
+					// output when successful. Give the model an explicit result
+					// so it knows the command completed.
+					toolOutput = "Command executed successfully"
+				}
+
+				// Associate the command result with the exact Bash request and
+				// continue the agent loop so the model can give its final answer.
+				params.Messages = append(
+					params.Messages,
+					openai.ToolMessage(toolOutput, toolCall.ID),
 				)
 
 			default:
